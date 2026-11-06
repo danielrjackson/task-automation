@@ -60,6 +60,8 @@ def parse_yaml_file(file_path: str | Path) -> TaskList:
 
         return TaskList(data)
 
+    except FileNotFoundError:
+        raise
     except yaml.YAMLError as e:
         raise ValidationError(f"YAML parsing failed: {e}") from e
     except OSError as e:
