@@ -416,7 +416,7 @@ def find_tasks_by_criteria(
 
 def get_task_summary(task_list: TaskList) -> dict[str, Any]:
     """
-    Get comprehensive summary statistics for a TaskList.
+    Summarize active work progress and count archived tasks separately.
 
     Parameters
     ----------
@@ -428,21 +428,21 @@ def get_task_summary(task_list: TaskList) -> dict[str, Any]:
     dict[str, Any]
         Summary statistics including counts by priority, status, and completion rates
     """
-    all_tasks = task_list.get_all_tasks()
+    active_tasks = task_list.get_active_tasks()
     archived_tasks = task_list.archive
 
     # Count by priority
     priority_counts = {}
     for priority in Priority:
-        priority_counts[priority.value] = sum(1 for task in all_tasks if task.priority == priority)
+        priority_counts[priority.value] = sum(1 for task in active_tasks if task.priority == priority)
 
     # Count by status
     status_counts = {}
     for status in TaskStatus:
-        status_counts[status.value] = sum(1 for task in all_tasks if task.status == status)
+        status_counts[status.value] = sum(1 for task in active_tasks if task.status == status)
 
     # Calculate completion rate
-    total_active = len(all_tasks)
+    total_active = len(active_tasks)
     completed = status_counts.get(TaskStatus.COMPLETED.value, 0)
     completion_rate = (completed / total_active * 100) if total_active > 0 else 0
 
