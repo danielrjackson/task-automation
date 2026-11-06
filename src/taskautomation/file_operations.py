@@ -21,12 +21,12 @@ import os
 import pathlib
 import shutil
 import subprocess
-import sys
 from typing import Any
 
 import yaml
 
 from .backup_persistence import copy_backup
+from .runtime_version import check_runtime_version
 from .task_schema import TaskList
 from .task_types import ExitCode, OperationResult, ValidationResult
 
@@ -693,13 +693,10 @@ def verify_operation_safety(
 
 def _check_python_version(errors: list[str], context: dict[str, Any]) -> None:
     """Check Python version requirements."""
-    python_version = sys.version_info
-    context["python_version"] = (
-        f"{python_version.major}.{python_version.minor}.{python_version.micro}"
-    )
-
-    if python_version < (3, 8):
-        errors.append(f"Python 3.8+ required, found {context['python_version']}")
+    version, error = check_runtime_version()
+    context["python_version"] = version
+    if error is not None:
+        errors.append(error)
 
 
 def _check_required_directories(errors: list[str]) -> None:

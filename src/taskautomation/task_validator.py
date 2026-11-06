@@ -15,6 +15,7 @@ from typing import Any
 
 import yaml
 
+from .runtime_version import check_runtime_version
 from .task_schema import Task, TaskList, TaskStatus, ValidationError
 from .task_types import ExitCode, OperationResult, ValidationResult, create_structured_error
 
@@ -324,20 +325,12 @@ def validate_automation_environment() -> ValidationResult:
     if not os.path.exists(".git"):
         warnings.append("Not in a git repository - some features may not work")
 
-    # Check Python environment and required packages
-    try:
-        import sys
-
-        python_version = f"Python {sys.version_info.major}.{sys.version_info.minor}"
-
-        # Check minimum Python version for the features we use
-        if sys.version_info < (3, 8):
-            errors.append(f"{python_version} detected - Python 3.8+ required for type hints")
-        else:
-            warnings.append(f"{python_version} detected - compatible version")
-
-    except Exception as e:
-        warnings.append(f"Could not check Python version: {e}")
+    # An unknown interpreter must not admit the environment.
+    python_version, version_error = check_runtime_version()
+    if version_error is not None:
+        errors.append(version_error)
+    else:
+        warnings.append(f"Python {python_version} detected - compatible version")
 
     # Check required packages are available
     required_packages = [("yaml", "PyYAML"), ("pydantic", "pydantic")]
