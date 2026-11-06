@@ -24,7 +24,7 @@ from typing import Any
 import yaml
 
 # Import task types and schema with relative imports for circular import avoidance
-from .task_schema import Task, TaskList
+from .task_schema import Task, TaskList, _serialize_task_datetime
 from .task_types import ExitCode, OperationResult
 
 
@@ -86,7 +86,7 @@ def format_task_yaml(task: Task) -> str:
     ...
     """
     task_dict = task.to_dict()
-    return yaml.dump(task_dict, default_flow_style=False, sort_keys=False, indent=2)
+    return yaml.safe_dump(task_dict, default_flow_style=False, sort_keys=False, indent=2)
 
 
 def format_task_list_yaml(task_list: TaskList) -> str:
@@ -124,7 +124,7 @@ def format_task_list_yaml(task_list: TaskList) -> str:
           ...
     """
     task_list_dict = task_list.to_dict()
-    return yaml.dump(task_list_dict, default_flow_style=False, sort_keys=False, indent=2)
+    return yaml.safe_dump(task_list_dict, default_flow_style=False, sort_keys=False, indent=2)
 
 
 def format_task_block(task: Any, updated_subtasks: dict[str, bool] | None = None) -> str:
@@ -260,11 +260,11 @@ def format_task_summary(task: Task, include_subtasks: bool = True) -> str:
 
     # Dates if available
     if task.created_date:
-        lines.append(f"Created: {task.created_date}")
+        lines.append(f"Created: {_serialize_task_datetime(task.created_date)}")
     if task.start_date:
-        lines.append(f"Start: {task.start_date}")
+        lines.append(f"Start: {_serialize_task_datetime(task.start_date)}")
     if task.finish_date:
-        lines.append(f"Finish: {task.finish_date}")
+        lines.append(f"Finish: {_serialize_task_datetime(task.finish_date)}")
 
     # Prerequisites
     if task.prerequisites:
@@ -284,7 +284,7 @@ def format_task_list_summary(task_list: TaskList, group_by_priority: bool = True
     """
     Format a TaskList object into a human-readable summary.
 
-    Creates a comprehensive overview of all tasks in the task list, optionally
+    Creates a comprehensive overview of active tasks in the task list, optionally
     grouped by priority level for better organization.
 
     Parameters
@@ -318,15 +318,15 @@ def format_task_list_summary(task_list: TaskList, group_by_priority: bool = True
     """
     lines = ["Task List Summary", "=" * 17]
 
-    # Get all tasks and count by priority and status
-    all_tasks = task_list.get_all_tasks()
-    total_tasks = len(all_tasks)
+    # Count the active rows; archive information is reported separately.
+    active_tasks = task_list.get_active_tasks()
+    total_tasks = len(active_tasks)
 
     # Count by priority and status
     priority_counts: dict[str, int] = {}
     status_counts: dict[str, int] = {}
 
-    for task in all_tasks:
+    for task in active_tasks:
         # Count by priority
         priority = task.priority.value if task.priority else "unknown"
         priority_counts[priority] = priority_counts.get(priority, 0) + 1
