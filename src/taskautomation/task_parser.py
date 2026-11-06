@@ -8,6 +8,7 @@ Replaces the previous regex-based markdown parsing with robust YAML handling.
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -125,24 +126,23 @@ def save_yaml_file(
     try:
         path = Path(file_path)
 
+        # Finish safe serialization before any destination or backup mutation.
+        yaml_content = yaml.safe_dump(
+            task_list.to_dict(), default_flow_style=False, indent=2,
+            sort_keys=False, allow_unicode=True,
+        )
+
         # Create backup if requested and file exists
         if backup and path.exists():
             backup_path = path.with_suffix(f"{path.suffix}.backup")
-            backup_path.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+            shutil.copyfile(path, backup_path)
 
         # Ensure parent directory exists
         path.parent.mkdir(parents=True, exist_ok=True)
 
         # Save the YAML file
         with path.open("w", encoding="utf-8") as f:
-            yaml.dump(
-                task_list.to_dict(),
-                f,
-                default_flow_style=False,
-                indent=2,
-                sort_keys=False,
-                allow_unicode=True,
-            )
+            f.write(yaml_content)
 
         return OperationResult(
             success=True,

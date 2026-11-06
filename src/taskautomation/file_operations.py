@@ -6,7 +6,7 @@ This module provides safe file I/O operations with backup/recovery mechanisms,
 validation, and safety checks for YAML-based task management files.
 
 Key Features:
-- Atomic YAML file operations with backup support
+- YAML file operations with backup support
 - Schema validation-first approach for all file operations
 - Safe directory and permission handling
 - System prerequisite validation
@@ -43,7 +43,9 @@ BACKUP_DIR = ROOT / ".task_backups"
 # =============================================================================
 
 
-def backup_tasks_file(backup_suffix: str | None = None) -> pathlib.Path:
+def backup_tasks_file(
+    backup_suffix: str | None = None, *, file_path: pathlib.Path | None = None
+) -> pathlib.Path:
     """
     Create a timestamped backup of the YAML tasks file.
 
@@ -51,6 +53,8 @@ def backup_tasks_file(backup_suffix: str | None = None) -> pathlib.Path:
     ----------
     backup_suffix : str | None, optional
         Optional suffix for backup filename, by default None
+    file_path : pathlib.Path | None, optional
+        Source to preserve, defaulting to TASKS_FILE
 
     Returns
     -------
@@ -64,8 +68,9 @@ def backup_tasks_file(backup_suffix: str | None = None) -> pathlib.Path:
     OSError
         If backup creation fails
     """
-    if not TASKS_FILE.exists():
-        raise FileNotFoundError(f"Tasks file not found: {TASKS_FILE}")
+    source = TASKS_FILE if file_path is None else file_path
+    if not source.exists():
+        raise FileNotFoundError(f"Tasks file not found: {source}")
 
     # Create backup directory
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
@@ -77,7 +82,7 @@ def backup_tasks_file(backup_suffix: str | None = None) -> pathlib.Path:
     backup_path = BACKUP_DIR / backup_name
 
     # Create backup
-    shutil.copy2(TASKS_FILE, backup_path)
+    shutil.copy2(source, backup_path)
 
     return backup_path
 
@@ -341,9 +346,10 @@ def save_tasks_file(
                 )
             warnings.extend(validation.warnings)
 
+        # Safe serialization must succeed before opening either task or backup files.
+        yaml_content = yaml.safe_dump(yaml_data, default_flow_style=False, sort_keys=False, indent=2)
         if dry_run:
             # Show what would be saved in dry run
-            yaml_content = yaml.dump(yaml_data, default_flow_style=False, sort_keys=False, indent=2)
             data["yaml_preview"] = (
                 yaml_content[:500] + "..." if len(yaml_content) > 500 else yaml_content
             )
@@ -359,13 +365,13 @@ def save_tasks_file(
         # Create backup if requested and file exists
         backup_path = None
         if backup and file_path.exists():
-            backup_path = backup_tasks_file("pre_save")
+            backup_path = backup_tasks_file("pre_save", file_path=file_path)
             data["backup_path"] = str(backup_path)
 
         # Save YAML file
         file_path.parent.mkdir(parents=True, exist_ok=True)
         with open(file_path, "w", encoding="utf-8") as f:
-            yaml.dump(yaml_data, f, default_flow_style=False, sort_keys=False, indent=2)
+            f.write(yaml_content)
 
         return OperationResult(
             success=True,
