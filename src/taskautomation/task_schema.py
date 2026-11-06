@@ -84,7 +84,7 @@ def validate_integer(
             raise ValidationError(f"Field '{field_name}' is required", field_name, value)
         return None
 
-    if not isinstance(value, int):
+    if not isinstance(value, int) or isinstance(value, bool):
         raise ValidationError(f"Field '{field_name}' must be an integer", field_name, value)
 
     if min_value is not None and value < min_value:
@@ -140,7 +140,10 @@ class Subtask:
     def __init__(self, data: dict[str, Any]):
         """Initialize subtask from dictionary."""
         self.name = validate_string(data.get("name"), "name", required=True, min_length=1)
-        self.completed = bool(data.get("completed", False))
+        completed = data.get("completed", False)
+        if not isinstance(completed, bool):
+            raise ValidationError("Field 'completed' must be a boolean", "completed", completed)
+        self.completed = completed
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
