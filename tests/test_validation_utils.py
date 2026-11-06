@@ -12,7 +12,7 @@ import unittest
 # Add src to path for imports
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / "src"))
 
-from taskautomation.core_utils import ValidationResult
+from taskautomation.core_utils import TaskInfo, ValidationResult
 from taskautomation.validation_utils import (
     extract_assignee,
     extract_create_date,
@@ -21,8 +21,12 @@ from taskautomation.validation_utils import (
     extract_priority,
     extract_task_id,
     is_valid_task_line,
+    validate_prerequisites,
+    validate_task_data,
     validate_task_format,
     validate_task_schema,
+    validate_tasks_file,
+    verify_operation_safety,
 )
 
 
@@ -470,6 +474,410 @@ class TestValidationUtils(unittest.TestCase):
 
         # Test with non-string inputs (for functions that should handle them)
         self.assertEqual(extract_description(123), "")  # Non-string input
+
+    def test_validate_task_data(self):
+        """Test validate_task_data function with TaskInfo objects."""
+        # Valid task data
+        valid_task = TaskInfo(
+            title="Valid Task",
+            checked=False,
+            task_id=1,
+            priority="High",
+            assignee="TestUser",
+            create_date="2025-01-01T12:00:00Z",
+            start_date="2025-01-01T13:00:00Z",
+            finish_date="",
+            estimated_time="2h",
+            description="Test description",
+            prerequisites=[],
+            subtasks={},
+            raw_block="- [ ] **Valid Task**:\n  - **ID**: 1",
+        )
+
+        result = validate_task_data(valid_task)
+        self.assertIsInstance(result, ValidationResult)
+        self.assertTrue(result.is_valid)
+        self.assertEqual(len(result.errors), 0)
+
+        # Task with missing title
+        invalid_task = TaskInfo(
+            title="",
+            checked=False,
+            task_id=2,
+            priority="Medium",
+            assignee="TestUser",
+            create_date="2025-01-01T12:00:00Z",
+            start_date="",
+            finish_date="",
+            estimated_time="1h",
+            description="Test description",
+            prerequisites=[],
+            subtasks={},
+            raw_block="- [ ] **Invalid Task**:\n  - **ID**: 2",
+        )
+
+        result2 = validate_task_data(invalid_task)
+        self.assertFalse(result2.is_valid)
+        self.assertGreater(len(result2.errors), 0)
+        self.assertIn("title is required", result2.errors[0].lower())
+
+        # Task with invalid task_id
+        invalid_id_task = TaskInfo(
+            title="Invalid ID Task",
+            checked=False,
+            task_id=-1,
+            priority="High",
+            assignee="TestUser",
+            create_date="2025-01-01T12:00:00Z",
+            start_date="",
+            finish_date="",
+            estimated_time="1h",
+            description="Test description",
+            prerequisites=[],
+            subtasks={},
+            raw_block="- [ ] **Invalid ID Task**:\n  - **ID**: -1",
+        )
+
+        result3 = validate_task_data(invalid_id_task)
+        self.assertFalse(result3.is_valid)
+        self.assertGreater(len(result3.errors), 0)
+        self.assertIn("positive integer", result3.errors[0])
+
+        # Task with invalid priority
+        invalid_priority_task = TaskInfo(
+            title="Invalid Priority Task",
+            checked=False,
+            task_id=3,
+            priority="InvalidPriority",
+            assignee="TestUser",
+            create_date="2025-01-01T12:00:00Z",
+            start_date="",
+            finish_date="",
+            estimated_time="1h",
+            description="Test description",
+            prerequisites=[],
+            subtasks={},
+            raw_block="- [ ] **Invalid Priority Task**:\n  - **ID**: 3",
+        )
+
+        result4 = validate_task_data(invalid_priority_task)
+        self.assertFalse(result4.is_valid)
+        self.assertGreater(len(result4.errors), 0)
+        self.assertIn("Priority must be one of", result4.errors[0])
+
+        # Task with invalid date format
+        invalid_date_task = TaskInfo(
+            title="Invalid Date Task",
+            checked=False,
+            task_id=4,
+            priority="High",
+            assignee="TestUser",
+            create_date="invalid-date",
+            start_date="",
+            finish_date="",
+            estimated_time="1h",
+            description="Test description",
+            prerequisites=[],
+            subtasks={},
+            raw_block="- [ ] **Invalid Date Task**:\n  - **ID**: 4",
+        )
+
+        result5 = validate_task_data(invalid_date_task)
+        self.assertFalse(result5.is_valid)
+        self.assertGreater(len(result5.errors), 0)
+        self.assertIn("ISO8601 format", result5.errors[0])
+
+        # Task with date logic issues (start before create)
+        date_logic_task = TaskInfo(
+            title="Date Logic Task",
+            checked=False,
+            task_id=5,
+            priority="Medium",
+            assignee="TestUser",
+            create_date="2025-01-02T12:00:00Z",
+            start_date="2025-01-01T12:00:00Z",  # Before create date
+            finish_date="",
+            estimated_time="1h",
+            description="Test description",
+            prerequisites=[],
+            subtasks={},
+            raw_block="- [ ] **Date Logic Task**:\n  - **ID**: 5",
+        )
+
+        result6 = validate_task_data(date_logic_task)
+        self.assertTrue(result6.is_valid)  # Should be valid but have warnings
+        self.assertGreater(len(result6.warnings), 0)
+        self.assertIn("Start date is before create date", result6.warnings[0])
+
+        # Completed task without finish date
+        completed_no_finish = TaskInfo(
+            title="Completed No Finish",
+            checked=True,
+            task_id=6,
+            priority="High",
+            assignee="TestUser",
+            create_date="2025-01-01T12:00:00Z",
+            start_date="",
+            finish_date="",  # No finish date but checked
+            estimated_time="1h",
+            description="Test description",
+            prerequisites=[],
+            subtasks={},
+            raw_block="- [x] **Completed No Finish**:\n  - **ID**: 6",
+        )
+
+        result7 = validate_task_data(completed_no_finish)
+        self.assertTrue(result7.is_valid)  # Valid but should have warnings
+        self.assertGreater(len(result7.warnings), 0)
+        self.assertIn("finish date", result7.warnings[0].lower())
+
+        # Task with subtasks
+        task_with_subtasks = TaskInfo(
+            title="Task With Subtasks",
+            checked=True,  # Main task completed
+            task_id=7,
+            priority="Medium",
+            assignee="TestUser",
+            create_date="2025-01-01T12:00:00Z",
+            start_date="",
+            finish_date="2025-01-01T15:00:00Z",  # Provide finish date to avoid that warning
+            estimated_time="2h",
+            description="Test description",
+            prerequisites=[],
+            subtasks={"subtask1": False, "subtask2": False},  # But subtasks not done
+            raw_block="- [x] **Task With Subtasks**:\n  - **ID**: 7",
+        )
+
+        result8 = validate_task_data(task_with_subtasks)
+        self.assertTrue(result8.is_valid)  # Valid but should have warnings
+        self.assertGreater(len(result8.warnings), 0)
+        # Check if any warning contains "subtasks" - could be warning about uncompleted subtasks
+        subtask_warning_found = any("subtask" in warning.lower() for warning in result8.warnings)
+        self.assertTrue(subtask_warning_found, f"Expected subtask warning, got: {result8.warnings}")
+
+    def test_validate_tasks_file(self):
+        """Test validate_tasks_file function."""
+        import os
+        import tempfile
+
+        # Create a mock parse function
+        def mock_parse_tasks(content):
+            """Mock task parser that returns sample tasks."""
+            task1 = TaskInfo(
+                title="Task 1",
+                checked=False,
+                task_id=1,
+                priority="High",
+                assignee="User1",
+                create_date="2025-01-01T12:00:00Z",
+                start_date="",
+                finish_date="",
+                estimated_time="1h",
+                description="First task",
+                prerequisites=[],
+                subtasks={},
+                raw_block="- [ ] **Task 1**:\n  - **ID**: 1",
+            )
+            task2 = TaskInfo(
+                title="Task 2",
+                checked=False,
+                task_id=2,
+                priority="Medium",
+                assignee="User2",
+                create_date="2025-01-02T12:00:00Z",
+                start_date="",
+                finish_date="",
+                estimated_time="2h",
+                description="Second task",
+                prerequisites=[],
+                subtasks={},
+                raw_block="- [ ] **Task 2**:\n  - **ID**: 2",
+            )
+            return {1: task1, 2: task2}
+
+        # Test with valid file
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+            f.write("# Test Tasks\n\n- [ ] Task 1\n- [ ] Task 2\n")
+            temp_path = pathlib.Path(f.name)
+
+        try:
+            result = validate_tasks_file(temp_path, mock_parse_tasks)
+            self.assertIsInstance(result, ValidationResult)
+            self.assertTrue(result.is_valid)
+            self.assertEqual(result.context["task_count"], 2)
+            self.assertGreater(result.context["file_size"], 0)
+            self.assertGreater(result.context["line_count"], 0)
+        finally:
+            os.unlink(temp_path)
+
+        # Test with non-existent file
+        non_existent = pathlib.Path("/non/existent/file.md")
+        result2 = validate_tasks_file(non_existent, mock_parse_tasks)
+        self.assertFalse(result2.is_valid)
+        self.assertGreater(len(result2.errors), 0)
+        self.assertIn("does not exist", result2.errors[0])
+
+        # Test with duplicate task IDs
+        def mock_parse_duplicate_tasks(content):
+            """Mock parser that returns tasks with duplicate IDs."""
+            task1 = TaskInfo(
+                title="Task 1",
+                checked=False,
+                task_id=1,  # Same ID
+                priority="High",
+                assignee="User1",
+                create_date="2025-01-01T12:00:00Z",
+                start_date="",
+                finish_date="",
+                estimated_time="1h",
+                description="First task",
+                prerequisites=[],
+                subtasks={},
+                raw_block="- [ ] **Task 1**:\n  - **ID**: 1",
+            )
+            task2 = TaskInfo(
+                title="Task 2",
+                checked=False,
+                task_id=1,  # Same ID - duplicate
+                priority="Medium",
+                assignee="User2",
+                create_date="2025-01-02T12:00:00Z",
+                start_date="",
+                finish_date="",
+                estimated_time="2h",
+                description="Second task",
+                prerequisites=[],
+                subtasks={},
+                raw_block="- [ ] **Task 2**:\n  - **ID**: 1",
+            )
+            return {1: task1, 2: task2}  # Different keys but same task_id values
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+            f.write("# Test Tasks\n\n- [ ] Task 1\n- [ ] Task 2\n")
+            temp_path = pathlib.Path(f.name)
+
+        try:
+            result3 = validate_tasks_file(temp_path, mock_parse_duplicate_tasks)
+            self.assertFalse(result3.is_valid)
+            self.assertGreater(len(result3.errors), 0)
+            self.assertIn("Duplicate task IDs", result3.errors[0])
+        finally:
+            os.unlink(temp_path)
+
+    def test_verify_operation_safety(self):
+        """Test verify_operation_safety function."""
+        import os
+        import tempfile
+
+        # Test with existing writable files
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            temp_file = pathlib.Path(f.name)
+
+        try:
+            result = verify_operation_safety("test operation", [temp_file], dry_run=True)
+            self.assertIsInstance(result, ValidationResult)
+            # Should be valid since file exists and is writable
+            self.assertTrue(result.is_valid)
+            self.assertEqual(result.context["operation"], "test operation")
+            self.assertTrue(result.context["dry_run"])
+            self.assertEqual(len(result.context["target_files"]), 1)
+        finally:
+            os.unlink(temp_file)
+
+        # Test with non-existent files (should check parent directory)
+        non_existent = pathlib.Path(tempfile.gettempdir()) / "non_existent_file.txt"
+        result2 = verify_operation_safety("create file", [non_existent], dry_run=False)
+        self.assertIsInstance(result2, ValidationResult)
+        # Should be valid since parent directory exists and is writable
+        self.assertTrue(result2.is_valid)
+        self.assertFalse(result2.context["dry_run"])
+
+        # Test with a file that is not a file (directory)
+        temp_dir = pathlib.Path(tempfile.mkdtemp())
+        try:
+            result3 = verify_operation_safety("modify directory", [temp_dir], dry_run=True)
+            self.assertFalse(result3.is_valid)
+            self.assertGreater(len(result3.errors), 0)
+            self.assertIn("not a file", result3.errors[0])
+        finally:
+            os.rmdir(temp_dir)
+
+    def test_validate_prerequisites(self):
+        """Test validate_prerequisites function."""
+        import shutil
+        import tempfile
+
+        # Create a temporary directory structure
+        temp_root = pathlib.Path(tempfile.mkdtemp())
+        try:
+            # Create required directories
+            docs_dir = temp_root / "docs"
+            scripts_dev_dir = temp_root / "scripts" / "dev"
+            docs_dir.mkdir(parents=True)
+            scripts_dev_dir.mkdir(parents=True)
+
+            result = validate_prerequisites(temp_root)
+            self.assertIsInstance(result, ValidationResult)
+            # Should be valid since directories exist and Python version is OK
+            self.assertTrue(result.is_valid)
+            self.assertIn("python_version", result.context)
+            self.assertIn("git_available", result.context)
+
+            # Test with missing directories
+            shutil.rmtree(docs_dir)
+            result2 = validate_prerequisites(temp_root)
+            self.assertFalse(result2.is_valid)
+            self.assertGreater(len(result2.errors), 0)
+            self.assertIn("Required directory missing", result2.errors[0])
+
+        finally:
+            shutil.rmtree(temp_root)
+
+    def test_additional_edge_cases(self):
+        """Test additional edge cases to improve coverage."""
+        # Test extract_task_id with Task ID format (line 435)
+        task_with_task_id_format = """- [ ] **Test Task**:
+    - Task ID: TASK-999
+    - Priority: High"""
+
+        result = extract_task_id(task_with_task_id_format)
+        self.assertEqual(result, "TASK-999")
+
+        # Test is_valid_task_line with T-pattern (line 487)
+        line_with_t_pattern = "This line mentions T-123 as a task ID"
+        self.assertTrue(is_valid_task_line(line_with_t_pattern))
+
+        # Test validate_task_schema edge cases
+        # Test non-dict input (lines 569-570)
+        result_non_dict = validate_task_schema("not a dict")
+        self.assertFalse(result_non_dict.is_valid)
+        self.assertEqual(result_non_dict.errors, ["Task data must be a dictionary"])
+        self.assertEqual(result_non_dict.context["task_data_type"], "<class 'str'>")
+
+        # Test empty required field (line 578)
+        task_empty_field = {"title": "", "task_id": 5}
+        result_empty = validate_task_schema(task_empty_field)
+        self.assertFalse(result_empty.is_valid)
+        self.assertIn("cannot be empty", result_empty.errors[0])
+
+        # Test invalid task_id types (lines 586-587)
+        task_invalid_id_type = {"title": "Test", "task_id": "not_a_number"}
+        result_invalid_id = validate_task_schema(task_invalid_id_type)
+        self.assertFalse(result_invalid_id.is_valid)
+        self.assertIn("Task ID must be numeric", result_invalid_id.errors[0])
+
+        # Test status validation (lines 597-599)
+        task_invalid_status = {"title": "Test", "task_id": 1, "status": "invalid_status"}
+        result_invalid_status = validate_task_schema(task_invalid_status)
+        self.assertTrue(result_invalid_status.is_valid)  # Status is just a warning
+        self.assertGreater(len(result_invalid_status.warnings), 0)
+        self.assertIn("Status should be one of", result_invalid_status.warnings[0])
+
+        # Test date field validation (line 606)
+        task_invalid_date = {"title": "Test", "task_id": 1, "create_date": "invalid-date"}
+        result_invalid_date = validate_task_schema(task_invalid_date)
+        self.assertFalse(result_invalid_date.is_valid)
+        self.assertIn("ISO8601 format", result_invalid_date.errors[0])
 
 
 if __name__ == "__main__":

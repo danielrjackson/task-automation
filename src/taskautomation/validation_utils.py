@@ -563,11 +563,18 @@ def validate_task_schema(task_data: dict) -> ValidationResult:
     """
     errors = []
     warnings = []
-    context = {"validation_type": "schema", "task_data_keys": list(task_data.keys())}
 
+    # Check if task_data is actually a dictionary
     if not isinstance(task_data, dict):
         errors.append("Task data must be a dictionary")
-        return ValidationResult(False, errors, warnings, context)
+        return ValidationResult(
+            is_valid=False,
+            errors=errors,
+            warnings=warnings,
+            context={"validation_type": "schema", "task_data_type": str(type(task_data))},
+        )
+
+    context = {"validation_type": "schema", "task_data_keys": list(task_data.keys())}
 
     # Check for required fields
     required_fields = ["title", "task_id"]
