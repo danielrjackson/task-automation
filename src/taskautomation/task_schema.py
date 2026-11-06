@@ -281,12 +281,27 @@ class TaskList:
 
         self.metadata = data.get("metadata", {})
 
+        # Preserve display-case labels used by existing task data. Output stays
+        # canonical; two aliases for the same section require explicit resolution.
+        sections = {}
+        for name in ("critical", "high", "medium", "low", "archive"):
+            aliases = (name,) if name == "archive" else (name, name.title())
+            supplied = [key for key in aliases if key in data]
+            if len(supplied) > 1:
+                raise ValidationError(f"Ambiguous priority sections: {', '.join(supplied)}")
+            entries = data[supplied[0]] if supplied else []
+            if not isinstance(entries, list):
+                raise ValidationError(f"Priority section '{name}' must be a list")
+            if any(not isinstance(entry, dict) for entry in entries):
+                raise ValidationError(f"Each task in '{name}' must be a dictionary")
+            sections[name] = entries
+
         # Initialize priority lists
-        self.critical = [Task(t) for t in data.get("critical", [])]
-        self.high = [Task(t) for t in data.get("high", [])]
-        self.medium = [Task(t) for t in data.get("medium", [])]
-        self.low = [Task(t) for t in data.get("low", [])]
-        self.archive = [Task(t) for t in data.get("archive", [])]
+        self.critical = [Task(t) for t in sections["critical"]]
+        self.high = [Task(t) for t in sections["high"]]
+        self.medium = [Task(t) for t in sections["medium"]]
+        self.low = [Task(t) for t in sections["low"]]
+        self.archive = [Task(t) for t in sections["archive"]]
 
     def get_all_tasks(self) -> list[Task]:
         """Get all tasks across all priority levels."""
