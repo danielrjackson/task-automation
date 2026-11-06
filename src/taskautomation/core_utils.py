@@ -88,7 +88,38 @@ DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?$")
 
 
 class TaskInfo(NamedTuple):
-    """Enhanced task information with full metadata and validation."""
+    """
+    Represents detailed information about a task, including metadata and validation fields.
+
+    Attributes
+    ----------
+        title : str
+            The title or name of the task.
+        checked : bool
+            Indicates whether the task is marked as completed.
+        task_id : int
+            Unique identifier for the task.
+        priority : str
+            Priority level of the task (e.g., 'low', 'medium', 'high').
+        assignee : str | None
+            The person assigned to the task, or None if unassigned.
+        create_date : str | None
+            The date the task was created, as a string, or None if unknown.
+        start_date : str | None
+            The date the task was started, as a string, or None if not started.
+        finish_date : str | None
+            The date the task was finished, as a string, or None if not finished.
+        estimated_time : str | None
+            Estimated time to complete the task, as a string (e.g., '2h'), or None if not set.
+        description : str | None
+            Detailed description of the task, or None if not provided.
+        prerequisites : list[str]
+            List of prerequisite task titles or IDs that must be completed before this task.
+        subtasks : dict[str, bool]
+            Dictionary mapping subtask names to their completion status (True if checked).
+        raw_block : str
+            The original text block from which this task was parsed or created, preserved for reference.
+    """
 
     title: str
     checked: bool

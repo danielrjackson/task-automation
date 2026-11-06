@@ -47,21 +47,43 @@ from typing import NamedTuple
 
 
 # Default paths - can be overridden for testing
-def get_default_root():
-    """Get default root directory."""
+def get_default_root() -> pathlib.Path:
+    """
+    Get default root directory.
+
+    Returns
+    -------
+    pathlib.Path
+        The default root directory.
+    """
     return pathlib.Path(__file__).resolve().parent.parent.parent
 
 
-def get_paths(root_override=None):
-    """Get all file paths, with optional root override for testing."""
+def get_paths(root_override=None) -> dict[str, pathlib.Path]:
+    """
+    Get all file paths, with optional root override for testing.
+
+    Parameters
+    ----------
+    root_override : str | None
+        Optional root directory to use instead of the default.
+
+    Returns
+    -------
+    dict[str, pathlib.Path]
+        Mapping of path names to their corresponding Path objects.
+    """
     root = pathlib.Path(root_override) if root_override else get_default_root()
     return {"ROOT": root, "TASKS": root / "docs" / "TASKS.md"}
 
 
 # Default paths for backward compatibility
-_DEFAULT_PATHS = get_paths()
-ROOT = _DEFAULT_PATHS["ROOT"]
-TASKS = _DEFAULT_PATHS["TASKS"]
+_DEFAULT_PATHS: dict[str, pathlib.Path] = get_paths()
+"""Default paths for task automation."""
+ROOT: pathlib.Path = _DEFAULT_PATHS["ROOT"]
+"""Root directory for task automation."""
+TASKS: pathlib.Path = _DEFAULT_PATHS["TASKS"]
+"""Path to the TASKS.md file."""
 
 # Regex patterns for parsing pytest output
 FAIL_RE = re.compile(r"^(.+?)::(.+?) FAILED", re.M)  # capture file path and test name

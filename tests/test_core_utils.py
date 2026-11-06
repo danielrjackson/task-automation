@@ -15,7 +15,7 @@ from datetime import datetime
 # Add src to path for imports
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / "src"))
 
-from taskautomation.core_utils import (
+from src.taskautomation.core_utils import (
     DOCS_DIR,
     PLANNING_DIR,
     ROOT_DIR,
@@ -27,7 +27,9 @@ from taskautomation.core_utils import (
     TaskInfo,
     TaskStatus,
     ValidationResult,
+    find_tasks_by_criteria,
     format_iso8601_datetime,
+    get_current_datetime,
     get_git_root,
 )
 
@@ -224,6 +226,61 @@ class TestCoreUtils(unittest.TestCase):
         self.assertIsInstance(formatted3, str)
         self.assertIn("2025-06-15T08:00:00", formatted3)
 
+    def test_format_iso8601_datetime_none(self):
+        """Test format_iso8601_datetime with None parameter."""
+        # Test with None (should use current time)
+        formatted = format_iso8601_datetime(None)
+
+        self.assertIsInstance(formatted, str)
+        self.assertTrue(formatted.endswith("Z"))
+        # Should be in ISO format
+        self.assertRegex(formatted, r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
+
+    def test_format_iso8601_datetime_utc_timezone(self):
+        """Test format_iso8601_datetime with UTC timezone datetime."""
+        import datetime as dt
+
+        # Create datetime with explicit UTC timezone
+        utc_datetime = dt.datetime(2025, 1, 1, 12, 0, 0, tzinfo=dt.UTC)
+        formatted = format_iso8601_datetime(utc_datetime)
+
+        self.assertIsInstance(formatted, str)
+        self.assertTrue(formatted.endswith("Z"))
+        self.assertIn("2025-01-01T12:00:00", formatted)
+
+    def test_get_current_datetime(self):
+        """Test get_current_datetime function."""
+        current_dt = get_current_datetime()
+
+        self.assertIsInstance(current_dt, str)
+        self.assertTrue(current_dt.endswith("Z"))
+        # Should be in ISO format
+        self.assertRegex(current_dt, r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
+
+    def test_format_iso8601_datetime_edge_cases(self):
+        """Test various edge cases for format_iso8601_datetime."""
+        import datetime as dt
+
+        # Test with different timezone formats to see if we can trigger lines 144-145
+        # Note: These lines might be unreachable due to Python's datetime implementation
+
+        # Test with timezone.utc (different from datetime.UTC)
+        utc_tz = dt.UTC
+        utc_datetime = dt.datetime(2025, 1, 1, 12, 0, 0, tzinfo=utc_tz)
+        formatted = format_iso8601_datetime(utc_datetime)
+
+        self.assertIsInstance(formatted, str)
+        self.assertTrue(formatted.endswith("Z"))
+
+        # Test with custom timezone offset
+        custom_tz = dt.timezone(dt.timedelta(hours=5))
+        custom_datetime = dt.datetime(2025, 1, 1, 12, 0, 0, tzinfo=custom_tz)
+        formatted_custom = format_iso8601_datetime(custom_datetime)
+
+        self.assertIsInstance(formatted_custom, str)
+        # Custom timezone should not get Z suffix
+        self.assertFalse(formatted_custom.endswith("Z"))
+
     def test_get_git_root(self):
         """Test get_git_root function."""
         # This function might return None if not in a git repository
@@ -247,7 +304,7 @@ class TestCoreUtils(unittest.TestCase):
             # Change to temp directory and test
             original_cwd = os.getcwd()
             try:
-                os.chdir(temp_dir)
+                os.chdir(temp_path)
                 git_root = get_git_root()
                 # Should return None since temp dir is not a git repo
                 self.assertIsNone(git_root)
@@ -405,6 +462,313 @@ class TestCoreUtils(unittest.TestCase):
         self.assertEqual(validation_result.context["task_id"], 1)
         self.assertEqual(validation_result.context["field"], "title")
         self.assertEqual(len(validation_result.warnings), 1)
+
+    def test_find_tasks_by_criteria_no_filters(self):
+        """Test find_tasks_by_criteria with no filters."""
+        # Create sample tasks
+        tasks = {
+            "Task 1": TaskInfo(
+                title="Task 1",
+                checked=False,
+                task_id=1,
+                priority="High",
+                assignee="Alice",
+                create_date="2025-01-01T00:00:00Z",
+                start_date=None,
+                finish_date=None,
+                estimated_time="2 hours",
+                description="High priority task",
+                prerequisites=[],
+                subtasks={"Step 1": False},
+                raw_block="- [ ] **Task 1**: High priority task",
+            ),
+            "Task 2": TaskInfo(
+                title="Task 2",
+                checked=True,
+                task_id=2,
+                priority="Medium",
+                assignee="Bob",
+                create_date="2025-01-01T00:00:00Z",
+                start_date="2025-01-01T00:00:00Z",
+                finish_date="2025-01-02T00:00:00Z",
+                estimated_time="1 hour",
+                description="Medium priority task",
+                prerequisites=[],
+                subtasks={},
+                raw_block="- [x] **Task 2**: Medium priority task",
+            ),
+        }
+
+        # No filters should return all tasks
+        result = find_tasks_by_criteria(tasks)
+        self.assertEqual(len(result), 2)
+        self.assertIn("Task 1", result)
+        self.assertIn("Task 2", result)
+
+    def test_find_tasks_by_criteria_priority_filter(self):
+        """Test find_tasks_by_criteria with priority filter."""
+        tasks = {
+            "High Task": TaskInfo(
+                title="High Task",
+                checked=False,
+                task_id=1,
+                priority="High",
+                assignee="Alice",
+                create_date="2025-01-01T00:00:00Z",
+                start_date=None,
+                finish_date=None,
+                estimated_time="2 hours",
+                description="High priority",
+                prerequisites=[],
+                subtasks={},
+                raw_block="- [ ] **High Task**: High priority",
+            ),
+            "Medium Task": TaskInfo(
+                title="Medium Task",
+                checked=False,
+                task_id=2,
+                priority="Medium",
+                assignee="Bob",
+                create_date="2025-01-01T00:00:00Z",
+                start_date=None,
+                finish_date=None,
+                estimated_time="1 hour",
+                description="Medium priority",
+                prerequisites=[],
+                subtasks={},
+                raw_block="- [ ] **Medium Task**: Medium priority",
+            ),
+        }
+
+        # Filter by High priority
+        result = find_tasks_by_criteria(tasks, priority="High")
+        self.assertEqual(len(result), 1)
+        self.assertIn("High Task", result)
+        self.assertNotIn("Medium Task", result)
+
+        # Filter by Medium priority
+        result = find_tasks_by_criteria(tasks, priority="Medium")
+        self.assertEqual(len(result), 1)
+        self.assertIn("Medium Task", result)
+        self.assertNotIn("High Task", result)
+
+    def test_find_tasks_by_criteria_checked_filter(self):
+        """Test find_tasks_by_criteria with checked filter."""
+        tasks = {
+            "Pending Task": TaskInfo(
+                title="Pending Task",
+                checked=False,
+                task_id=1,
+                priority="High",
+                assignee="Alice",
+                create_date="2025-01-01T00:00:00Z",
+                start_date=None,
+                finish_date=None,
+                estimated_time="2 hours",
+                description="Pending task",
+                prerequisites=[],
+                subtasks={},
+                raw_block="- [ ] **Pending Task**: Pending task",
+            ),
+            "Completed Task": TaskInfo(
+                title="Completed Task",
+                checked=True,
+                task_id=2,
+                priority="Medium",
+                assignee="Bob",
+                create_date="2025-01-01T00:00:00Z",
+                start_date="2025-01-01T00:00:00Z",
+                finish_date="2025-01-02T00:00:00Z",
+                estimated_time="1 hour",
+                description="Completed task",
+                prerequisites=[],
+                subtasks={},
+                raw_block="- [x] **Completed Task**: Completed task",
+            ),
+        }
+
+        # Filter by unchecked tasks
+        result = find_tasks_by_criteria(tasks, checked=False)
+        self.assertEqual(len(result), 1)
+        self.assertIn("Pending Task", result)
+
+        # Filter by checked tasks
+        result = find_tasks_by_criteria(tasks, checked=True)
+        self.assertEqual(len(result), 1)
+        self.assertIn("Completed Task", result)
+
+    def test_find_tasks_by_criteria_assignee_filter(self):
+        """Test find_tasks_by_criteria with assignee filter."""
+        tasks = {
+            "Alice Task": TaskInfo(
+                title="Alice Task",
+                checked=False,
+                task_id=1,
+                priority="High",
+                assignee="Alice",
+                create_date="2025-01-01T00:00:00Z",
+                start_date=None,
+                finish_date=None,
+                estimated_time="2 hours",
+                description="Alice's task",
+                prerequisites=[],
+                subtasks={},
+                raw_block="- [ ] **Alice Task**: Alice's task",
+            ),
+            "Bob Task": TaskInfo(
+                title="Bob Task",
+                checked=False,
+                task_id=2,
+                priority="Medium",
+                assignee="Bob",
+                create_date="2025-01-01T00:00:00Z",
+                start_date=None,
+                finish_date=None,
+                estimated_time="1 hour",
+                description="Bob's task",
+                prerequisites=[],
+                subtasks={},
+                raw_block="- [ ] **Bob Task**: Bob's task",
+            ),
+            "Unassigned Task": TaskInfo(
+                title="Unassigned Task",
+                checked=False,
+                task_id=3,
+                priority="Low",
+                assignee=None,
+                create_date="2025-01-01T00:00:00Z",
+                start_date=None,
+                finish_date=None,
+                estimated_time="30 min",
+                description="Unassigned task",
+                prerequisites=[],
+                subtasks={},
+                raw_block="- [ ] **Unassigned Task**: Unassigned task",
+            ),
+        }
+
+        # Filter by Alice
+        result = find_tasks_by_criteria(tasks, assignee="Alice")
+        self.assertEqual(len(result), 1)
+        self.assertIn("Alice Task", result)
+
+        # Filter by Bob
+        result = find_tasks_by_criteria(tasks, assignee="Bob")
+        self.assertEqual(len(result), 1)
+        self.assertIn("Bob Task", result)
+
+        # Filter by None (don't filter by assignee - should return all tasks)
+        result = find_tasks_by_criteria(tasks, assignee=None)
+        self.assertEqual(len(result), 3)  # All tasks should be returned
+        self.assertIn("Alice Task", result)
+        self.assertIn("Bob Task", result)
+        self.assertIn("Unassigned Task", result)
+
+    def test_find_tasks_by_criteria_subtasks_filter(self):
+        """Test find_tasks_by_criteria with has_subtasks filter."""
+        tasks = {
+            "With Subtasks": TaskInfo(
+                title="With Subtasks",
+                checked=False,
+                task_id=1,
+                priority="High",
+                assignee="Alice",
+                create_date="2025-01-01T00:00:00Z",
+                start_date=None,
+                finish_date=None,
+                estimated_time="2 hours",
+                description="Task with subtasks",
+                prerequisites=[],
+                subtasks={"Subtask 1": False, "Subtask 2": True},
+                raw_block="- [ ] **With Subtasks**: Task with subtasks",
+            ),
+            "Without Subtasks": TaskInfo(
+                title="Without Subtasks",
+                checked=False,
+                task_id=2,
+                priority="Medium",
+                assignee="Bob",
+                create_date="2025-01-01T00:00:00Z",
+                start_date=None,
+                finish_date=None,
+                estimated_time="1 hour",
+                description="Task without subtasks",
+                prerequisites=[],
+                subtasks={},
+                raw_block="- [ ] **Without Subtasks**: Task without subtasks",
+            ),
+        }
+
+        # Filter by has_subtasks=True
+        result = find_tasks_by_criteria(tasks, has_subtasks=True)
+        self.assertEqual(len(result), 1)
+        self.assertIn("With Subtasks", result)
+
+        # Filter by has_subtasks=False
+        result = find_tasks_by_criteria(tasks, has_subtasks=False)
+        self.assertEqual(len(result), 1)
+        self.assertIn("Without Subtasks", result)
+
+    def test_find_tasks_by_criteria_multiple_filters(self):
+        """Test find_tasks_by_criteria with multiple filters."""
+        tasks = {
+            "Match All": TaskInfo(
+                title="Match All",
+                checked=False,
+                task_id=1,
+                priority="High",
+                assignee="Alice",
+                create_date="2025-01-01T00:00:00Z",
+                start_date=None,
+                finish_date=None,
+                estimated_time="2 hours",
+                description="Matches all criteria",
+                prerequisites=[],
+                subtasks={"Step 1": False},
+                raw_block="- [ ] **Match All**: Matches all criteria",
+            ),
+            "Match Some": TaskInfo(
+                title="Match Some",
+                checked=False,
+                task_id=2,
+                priority="Medium",
+                assignee="Alice",
+                create_date="2025-01-01T00:00:00Z",
+                start_date=None,
+                finish_date=None,
+                estimated_time="1 hour",
+                description="Matches some criteria",
+                prerequisites=[],
+                subtasks={},
+                raw_block="- [ ] **Match Some**: Matches some criteria",
+            ),
+            "Match None": TaskInfo(
+                title="Match None",
+                checked=True,
+                task_id=3,
+                priority="Low",
+                assignee="Bob",
+                create_date="2025-01-01T00:00:00Z",
+                start_date="2025-01-01T00:00:00Z",
+                finish_date="2025-01-02T00:00:00Z",
+                estimated_time="30 min",
+                description="Matches no criteria",
+                prerequisites=[],
+                subtasks={},
+                raw_block="- [x] **Match None**: Matches no criteria",
+            ),
+        }
+
+        # Multiple filters
+        result = find_tasks_by_criteria(
+            tasks, priority="High", checked=False, assignee="Alice", has_subtasks=True
+        )
+        self.assertEqual(len(result), 1)
+        self.assertIn("Match All", result)
+
+        # No tasks match all filters
+        result = find_tasks_by_criteria(tasks, priority="Critical", checked=False, assignee="Alice")
+        self.assertEqual(len(result), 0)
 
 
 if __name__ == "__main__":
