@@ -120,21 +120,23 @@ class TaskInfo(NamedTuple):
     subtasks: dict[str, bool]  # test_name -> checked
 
 
-def run(cmd: str) -> tuple[int, str]:
+def run(cmd: list[str], *, cwd: pathlib.Path | None = None) -> tuple[int, str]:
     """
-    Execute a shell command and return its exit code along with combined output.
+    Execute an argument list and return its exit code along with combined output.
 
     Parameters
     ----------
-    cmd : str
-        The shell command to execute.
+    cmd : list[str]
+        Executable and literal arguments; no shell expansion is performed.
+    cwd : pathlib.Path | None
+        Working directory for the child, or the caller's directory if omitted.
 
     Returns
     -------
     tuple[int, str]
         Tuple of (exit_code, combined_stdout_stderr)
     """
-    cp = subprocess.run(cmd, shell=True, text=True, capture_output=True)
+    cp = subprocess.run(cmd, shell=False, text=True, capture_output=True, cwd=cwd, check=False)
     return cp.returncode, (cp.stdout or "") + (cp.stderr or "")
 
 
@@ -636,14 +638,14 @@ def update_tasks_file(  # noqa: C901
 
         # Run ruff formatter on the updated file
         try:
-            run("ruff format " + str(tasks_path))
+            run(["ruff", "format", str(tasks_path)])
         except Exception:
             pass  # Don't fail if ruff isn't available
 
     return has_changes
 
 
-def build_pytest_command(coverage_mode: str, pytest_args: list[str]) -> str:
+def build_pytest_command(coverage_mode: str, pytest_args: list[str]) -> list[str]:
     """
     Build the pytest command with coverage options.
 
@@ -656,10 +658,10 @@ def build_pytest_command(coverage_mode: str, pytest_args: list[str]) -> str:
 
     Returns
     -------
-    str
-        Complete pytest command string
+    list[str]
+        Current Python executable, pytest module and literal arguments
     """
-    base_cmd = ["pytest", "-v"]  # Use verbose mode to get individual test results
+    base_cmd = [sys.executable, "-m", "pytest", "-v"]
 
     if coverage_mode == "html":
         base_cmd.extend(["--cov=taskautomation", "--cov-report=html"])
@@ -668,7 +670,7 @@ def build_pytest_command(coverage_mode: str, pytest_args: list[str]) -> str:
     # For 'none', don't add coverage options
 
     base_cmd.extend(pytest_args)
-    return " ".join(base_cmd)
+    return base_cmd
 
 
 def main(argv=None, root_override=None):  # noqa: C901
@@ -716,13 +718,15 @@ def main(argv=None, root_override=None):  # noqa: C901
 
     # Parse known args to separate our options from pytest args
     args, pytest_args = parser.parse_known_args(argv)
+    if pytest_args[:1] == ["--"]:
+        pytest_args = pytest_args[1:]
 
     # Build and run pytest command
     test_cmd = build_pytest_command(args.coverage, pytest_args)
     if not args.quiet:
         print(f"Running: {test_cmd}")
 
-    rc, output = run(test_cmd)
+    rc, output = run(test_cmd, cwd=paths["ROOT"])
 
     # Parse test results
     test_results = parse_test_results(output)

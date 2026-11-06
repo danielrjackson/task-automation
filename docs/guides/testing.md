@@ -34,6 +34,17 @@ To run the tests, use the following command:
 pytest --cov=taskautomation --cov-report=html
 ```
 
+The enhanced runner uses the Python interpreter that launches it. On native Windows:
+
+```powershell
+.venv\Scripts\python.exe src\taskautomation\run_tests.py --coverage none -- "tests with spaces/test_example.py"
+```
+
+Forwarded arguments remain literal, including paths with spaces and pytest filter
+expressions. The runner selects its configured project root as pytest's working
+directory; it does not require a `pytest` executable on PATH or a shell. The default
+is report-only. Use `--update-tasks` only when intentionally updating the task list.
+
 ## Coverage Report
 
 > [!TIP] Use the Coverage Report
