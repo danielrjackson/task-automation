@@ -272,6 +272,12 @@ class TaskList:
         """Initialize task list from dictionary."""
         if data is None:
             data = {}
+        if not isinstance(data, dict):
+            raise ValidationError("Task root must be a dictionary")
+        if any(name in data for name in ("tasks", "archived_tasks")):
+            raise ValidationError(
+                "Unsupported task container; expected flat priority sections and archive"
+            )
 
         self.metadata = data.get("metadata", {})
 
