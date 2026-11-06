@@ -186,23 +186,27 @@ def load_tasks_file(
     # Load YAML content
     try:
         with open(file_path, encoding="utf-8") as f:
-            raw_data = yaml.safe_load(f) or {}
+            raw_data = yaml.safe_load(f)
     except yaml.YAMLError as e:
         raise yaml.YAMLError(f"Failed to parse YAML file {file_path}: {e}")
 
+    if raw_data is None:
+        raw_data = {}
+    if not isinstance(raw_data, dict):
+        raise ValueError("Task file root must be a dictionary")
+    if any(name in raw_data for name in ("tasks", "archived_tasks")):
+        raise ValueError("Unsupported task container; expected flat priority sections and archive")
+
+    task_list = TaskList(raw_data)
     if validate:
         # Import here to avoid circular imports
-        from .task_validator import validate_yaml_content
+        from .task_validator import validate_task_list
 
-        validation = validate_yaml_content(raw_data)
+        validation = validate_task_list(task_list)
         if not validation.is_valid:
             error_msg = "Tasks file validation failed:\n" + "\n".join(validation.errors)
             raise ValueError(error_msg)
 
-    # Import here to avoid circular imports
-    from .task_parser import parse_yaml_tasks
-
-    task_list = parse_yaml_tasks(raw_data)
     return task_list, raw_data
 
 
