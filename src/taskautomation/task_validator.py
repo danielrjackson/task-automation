@@ -497,17 +497,20 @@ def validate_schema_compatibility(data: dict[str, Any]) -> ValidationResult:
 
     try:
         # Check for required top-level keys
-        expected_keys = {"critical", "high", "medium", "low", "archive"}
-        missing_keys = expected_keys - set(data.keys())
+        missing_sections = []
+        for name in ("critical", "high", "medium", "low", "archive"):
+            aliases = (name,) if name == "archive" else (name, name.title())
+            if not any(alias in data for alias in aliases):
+                missing_sections.append(name if name == "archive" else name.title())
 
-        if missing_keys:
-            warnings.append(f"Missing priority sections: {', '.join(sorted(missing_keys))}")
+        if missing_sections:
+            warnings.append(f"Missing priority sections: {', '.join(missing_sections)}")
 
         # Check metadata if present
         if "metadata" in data:
             metadata = data["metadata"]
             if not isinstance(metadata, dict):
-                errors.append("Metadata must be a dictionary")
+                errors.append("Field 'metadata' must be a dictionary")
             else:
                 # Check for version info
                 if "version" not in metadata:
