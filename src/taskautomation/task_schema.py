@@ -330,8 +330,8 @@ class TaskList:
 
     def archive_task(self, task_id: int) -> bool:
         """Move task to archive by ID."""
-        task = self.get_task_by_id(task_id)
-        if not task:
+        task = next((task for task in self.get_active_tasks() if task.id == task_id), None)
+        if task is None:
             return False
 
         # Remove from current list

@@ -392,9 +392,9 @@ def find_tasks_by_criteria(
     """
     # Get tasks to search
     if include_archived:
-        tasks = task_list.get_all_tasks() + task_list.archive
-    else:
         tasks = task_list.get_all_tasks()
+    else:
+        tasks = task_list.get_active_tasks()
 
     filtered_tasks = []
 
