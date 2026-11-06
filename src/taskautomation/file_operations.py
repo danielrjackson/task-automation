@@ -26,6 +26,7 @@ from typing import Any
 
 import yaml
 
+from .backup_persistence import copy_backup
 from .task_schema import TaskList
 from .task_types import ExitCode, OperationResult, ValidationResult
 
@@ -72,9 +73,6 @@ def backup_tasks_file(
     if not source.exists():
         raise FileNotFoundError(f"Tasks file not found: {source}")
 
-    # Create backup directory
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-
     # Generate backup filename
     timestamp = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
     suffix = f"_{backup_suffix}" if backup_suffix else ""
@@ -82,9 +80,7 @@ def backup_tasks_file(
     backup_path = BACKUP_DIR / backup_name
 
     # Create backup
-    shutil.copy2(source, backup_path)
-
-    return backup_path
+    return copy_backup(source, backup_path, preserve_metadata=True)
 
 
 def restore_tasks_file(backup_path: pathlib.Path) -> OperationResult:
@@ -124,7 +120,15 @@ def restore_tasks_file(backup_path: pathlib.Path) -> OperationResult:
                 data["current_backup"] = str(current_backup)
                 warnings.append(f"Current file backed up to: {current_backup}")
             except Exception as e:
-                warnings.append(f"Could not backup current file: {e}")
+                errors.append(f"Could not confirm current-file backup: {e}")
+                return OperationResult(
+                    success=False,
+                    exit_code=ExitCode.SYSTEM_ERROR,
+                    message="Current-file backup failed; restore refused",
+                    data=data,
+                    errors=errors,
+                    warnings=warnings,
+                )
 
         # Restore from backup
         shutil.copy2(backup_path, TASKS_FILE)

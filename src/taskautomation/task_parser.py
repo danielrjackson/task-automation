@@ -8,12 +8,12 @@ Replaces the previous regex-based markdown parsing with robust YAML handling.
 
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+from .backup_persistence import copy_backup
 from .task_schema import Priority, Task, TaskList, TaskStatus, ValidationError
 from .task_types import (
     ExitCode,
@@ -133,9 +133,10 @@ def save_yaml_file(
         )
 
         # Create backup if requested and file exists
+        backup_path = None
         if backup and path.exists():
             backup_path = path.with_suffix(f"{path.suffix}.backup")
-            shutil.copyfile(path, backup_path)
+            backup_path = copy_backup(path, backup_path, preserve_metadata=False)
 
         # Ensure parent directory exists
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -148,7 +149,8 @@ def save_yaml_file(
             success=True,
             exit_code=ExitCode.SUCCESS,
             message=f"Successfully saved task list to {file_path}",
-            data={"file_path": str(file_path), "task_count": len(task_list.get_all_tasks())},
+            data={"file_path": str(file_path), "task_count": len(task_list.get_all_tasks()),
+                  **({"backup_path": str(backup_path)} if backup_path is not None else {})},
             errors=[],
             warnings=[],
         )
