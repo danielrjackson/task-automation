@@ -150,6 +150,18 @@ class Subtask:
         }
 
 
+def _serialize_task_datetime(value: datetime | None) -> str | None:
+    """Keep valid offsets and the legacy UTC suffix for naive task dates."""
+    if value is None:
+        return None
+    encoded = value.isoformat()
+    if value.utcoffset() is None:
+        return encoded + "Z"
+    if encoded.endswith("+00:00"):
+        return encoded.removesuffix("+00:00") + "Z"
+    return encoded
+
+
 class Task:
 
     """Main task object with full metadata."""
@@ -239,9 +251,9 @@ class Task:
             "status": self.status.value,
             "assignee": self.assignee,
             "estimated_time": self.estimated_time,
-            "created_date": self.created_date.isoformat() + "Z" if self.created_date else None,
-            "start_date": self.start_date.isoformat() + "Z" if self.start_date else None,
-            "finish_date": self.finish_date.isoformat() + "Z" if self.finish_date else None,
+            "created_date": _serialize_task_datetime(self.created_date),
+            "start_date": _serialize_task_datetime(self.start_date),
+            "finish_date": _serialize_task_datetime(self.finish_date),
             "prerequisites": self.prerequisites,
             "tags": self.tags,
             "subtasks": [st.to_dict() for st in self.subtasks],
